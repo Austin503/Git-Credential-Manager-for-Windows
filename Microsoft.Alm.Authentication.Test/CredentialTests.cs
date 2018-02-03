@@ -1,122 +1,110 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
-using System;
+﻿using System;
+using System.Collections.Generic;
+using Xunit;
 
 namespace Microsoft.Alm.Authentication.Test
 {
-    [TestClass]
     public class CredentialTests
     {
-        [TestMethod]
-        public void CredentialStoreUrl()
-        {
-            ICredentialStoreTest(new SecretStore("test"), "http://dummy.url/for/testing", "username", "password");
-        }
+        private const string Namespace = "test";
 
-        [TestMethod]
-        public void CredentialStoreUrlWithParams()
+        public static object[][] CredentialData
         {
-            ICredentialStoreTest(new SecretStore("test"), "http://dummy.url/for/testing?with=params", "username", "password");
-        }
-
-        [TestMethod]
-        public void CredentialStoreUnc()
-        {
-            ICredentialStoreTest(new SecretStore("test"), @"\\unc\share\test", "username", "password");
-        }
-
-        [TestMethod]
-        public void CredentialStoreUsernameNullReject()
-        {
-            try
+            get
             {
-                ICredentialStoreTest(new SecretStore("test"), "http://dummy.url/for/testing", null, "null_usernames_are_illegal");
-                Assert.Fail("Null username was accepted");
+                List<object[]> data = new List<object[]>()
+                {
+                    new object[] { false, "http://dummy.url/for/testing", "username", "password", false },
+                    new object[] { false, "http://dummy.url/for/testing?with=params", "username", "password", false },
+                    new object[] { false, "file://unc/share/test", "username", "password", false },
+                    new object[] { false, "http://dummy.url/for/testing", null, "null_usernames_are_illegal", true },
+                    new object[] { false, "http://dummy.url/for/testing", "", "blank_usernames_are_legal", false },
+                    new object[] { false, "http://dummy.url/for/testing", "null_passwords_are_legal", null, false },
+                    new object[] { false, "http://dummy.url/for/testing", "blank_passwords_are_legal", "", false },
+                    new object[] { false, "http://dummy.url/for/testing", "username", "password", false },
+                    new object[] { false, "http://dummy.url:999/for/testing", "username", "password", false },
+
+                    new object[] { true, "http://dummy.url/for/testing", "username", "password", false },
+                    new object[] { true, "http://dummy.url/for/testing?with=params", "username", "password", false },
+                    new object[] { true, "file://unc/share/test", "username", "password", false },
+                    new object[] { true, "http://dummy.url/for/testing", null, "null_usernames_are_illegal", true },
+                    new object[] { true, "http://dummy.url/for/testing", "", "blank_usernames_are_legal", false },
+                    new object[] { true, "http://dummy.url/for/testing", "null_passwords_are_legal", null, false },
+                    new object[] { true, "http://dummy.url/for/testing", "blank_passwords_are_legal", "", false },
+                    new object[] { true, "http://dummy.url/for/testing", "username", "password", false },
+                    new object[] { true, "http://dummy.url:999/for/testing", "username", "password", false },
+                };
+
+                return data.ToArray();
             }
-            catch { }
         }
 
-        [TestMethod]
-        public void CredentialStoreUsernameBlank()
+        public static object[][] UriToNameData
         {
-            ICredentialStoreTest(new SecretStore("test"), "http://dummy.url/for/testing", "", "blank_usernames_are_legal");
-        }
-
-        [TestMethod]
-        public void CredentialStorePasswordNull()
-        {
-            ICredentialStoreTest(new SecretStore("test"), "http://dummy.url/for/testing", "null_passwords_are_illegal", null);
-        }
-
-        [TestMethod]
-        public void CredentialStorePassswordBlank()
-        {
-            ICredentialStoreTest(new SecretStore("test"), "http://dummy.url/for/testing", "blank_passwords_are_legal", "");
-        }
-
-        [TestMethod]
-        public void SecretCacheUrl()
-        {
-            ICredentialStoreTest(new SecretCache("test-cache"), "http://dummy.url/for/testing", "username", "password");
-        }
-
-        [TestMethod]
-        public void SecretCacheUrlWithParams()
-        {
-            ICredentialStoreTest(new SecretCache("test-cache"), "http://dummy.url/for/testing?with=params", "username", "password");
-        }
-
-        [TestMethod]
-        public void SecretCacheUnc()
-        {
-            ICredentialStoreTest(new SecretCache("test-cache"), @"\\unc\share\test", "username", "password");
-        }
-
-        [TestMethod]
-        public void SecretCacheUsernameNull()
-        {
-            ICredentialStoreTest(new SecretCache("test-cache"), "http://dummy.url/for/testing", null, "null_usernames_are_illegal");
-        }
-
-        [TestMethod]
-        public void SecretCacheUsernameBlankReject()
-        {
-            ICredentialStoreTest(new SecretCache("test-cache"), "http://dummy.url/for/testing", "", "blank_usernames_are_illegal");
-        }
-        
-        [TestMethod]
-        public void SecretCachePasswordNull()
-        {
-            ICredentialStoreTest(new SecretCache("test-cache"), "http://dummy.url/for/testing", "null_passwords_are_illegal", null);
-        }        
-
-        private void ICredentialStoreTest(ICredentialStore credentialStore, string url, string username, string password)
-        {
-            try
+            get
             {
-                Uri uri = new Uri(url, UriKind.Absolute);
-                Credential writeCreds = new Credential(username, password);
+                var data = new List<object[]>()
+                {
+                    new object[] { "https://microsoft.visualstudio.com", null },
+                    new object[] { "https://www.github.com", null },
+                    new object[] { "https://bitbucket.org", null },
+                    new object[] { "https://github.com/Microsoft/Git-Credential-Manager-for-Windows.git", null },
+                    new object[] { "https://microsoft.visualstudio.com/", "https://microsoft.visualstudio.com" },
+                    new object[] { "https://mytenant.visualstudio.com/MYTENANT/_git/App.MyApp", null },
+                    new object[] { "file://unc/path", null },
+                    new object[] { "file://tfs01/vc/repos", null },
+                    new object[] { "http://vsts-tfs:8080/tfs", null },
+                };
+
+                return data.ToArray();
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(CredentialData))]
+        public void Credential_WriteDelete(bool useCache, string url, string username, string password, bool throws)
+        {
+            Action action = () =>
+            {
+                var uri = new TargetUri(url);
+                var writeCreds = new Credential(username, password);
+                var credentialStore = useCache
+                ? new SecretCache("test", Secret.UriToName) as ICredentialStore
+                : new SecretStore("test", null, null, Secret.UriToName) as ICredentialStore;
                 Credential readCreds = null;
 
                 credentialStore.WriteCredentials(uri, writeCreds);
 
-                if (credentialStore.ReadCredentials(uri, out readCreds))
-                {
-                    Assert.AreEqual(writeCreds.Password, readCreds.Password, "Passwords did not match between written and read credentials");
-                    Assert.AreEqual(writeCreds.Username, readCreds.Username, "Usernames did not match between written and read credentials");
-                }
-                else
-                {
-                    Assert.Fail("Failed to read credentials");
-                }
+                readCreds = credentialStore.ReadCredentials(uri);
+                Assert.NotNull(readCreds);
+                Assert.Equal(writeCreds.Password, readCreds.Password);
+                Assert.Equal(writeCreds.Username, readCreds.Username);
 
                 credentialStore.DeleteCredentials(uri);
 
-                Assert.IsFalse(credentialStore.ReadCredentials(uri, out readCreds), "Deleted credentials were read back");
-            }
-            catch (Exception exception)
+                Assert.Null(readCreds = credentialStore.ReadCredentials(uri));
+            };
+
+            if (throws)
             {
-                Assert.Fail(exception.Message);
+                Assert.Throws<ArgumentNullException>(action);
             }
+            else
+            {
+                action();
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(UriToNameData))]
+        public void UriToName(string original, string expected)
+        {
+            var uri = new Uri(original);
+            var actual = Secret.UriToName(uri, Namespace);
+
+            expected = $"{Namespace}:{expected ?? original}";
+
+            Assert.Equal(expected, actual, StringComparer.Ordinal);
         }
     }
 }

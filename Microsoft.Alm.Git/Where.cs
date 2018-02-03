@@ -1,6 +1,30 @@
-﻿using System;
+﻿/**** Git Credential Manager for Windows ****
+ *
+ * Copyright (c) Microsoft Corporation
+ * All rights reserved.
+ *
+ * MIT License
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the """"Software""""), to deal
+ * in the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
+ * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE."
+**/
+
+using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -12,36 +36,43 @@ namespace Microsoft.Alm.Git
     {
         /// <summary>
         /// Finds the "best" path to an app of a given name.
+        /// <para/>
+        /// Returns `<see langword="true"/>` if successful; otherwise `<see langword="false"/>`.
         /// </summary>
         /// <param name="name">The name of the application, without extension, to find.</param>
-        /// <param name="path">Path to the first match file which the operating system considers 
-        /// executable.</param>
-        /// <returns><see langword="True"/> if succeeds; <see langword="false"/> otherwise.</returns>
+        /// <param name="path">Path to the first match file which the operating system considers executable.</param>
         static public bool FindApp(string name, out string path)
         {
-            Trace.WriteLine("Where::App");
-
-            if (!String.IsNullOrWhiteSpace(name))
+            if (!string.IsNullOrWhiteSpace(name))
             {
                 string pathext = Environment.GetEnvironmentVariable("PATHEXT");
                 string envpath = Environment.GetEnvironmentVariable("PATH");
+
+                if (string.IsNullOrEmpty(pathext) || string.IsNullOrEmpty(envpath))
+                {
+                    // The user is likely hosed, or a poorly crafted test case - either way avoid NRE
+                    // from the .Split call.
+                    path = null;
+                    return false;
+                }
 
                 string[] exts = pathext.Split(';');
                 string[] paths = envpath.Split(';');
 
                 for (int i = 0; i < paths.Length; i++)
                 {
-                    if (String.IsNullOrWhiteSpace(paths[i]))
+                    if (string.IsNullOrWhiteSpace(paths[i]))
                         continue;
 
                     for (int j = 0; j < exts.Length; j++)
                     {
-                        if (String.IsNullOrWhiteSpace(exts[j]))
+                        if (string.IsNullOrWhiteSpace(exts[j]))
                             continue;
 
-                        string value = String.Format("{0}\\{1}{2}", paths[i], name, exts[j]);
+                        string value = string.Format("{0}\\{1}{2}", paths[i], name, exts[j]);
                         if (File.Exists(value))
                         {
+                            value = value.Replace("\\\\", "\\");
                             path = value;
                             return true;
                         }
@@ -60,54 +91,37 @@ namespace Microsoft.Alm.Git
         }
 
         /// <summary>
-        /// Finds and returns paths to Git installtions in common locations.
+        /// Finds and returns path(s) to Git installation(s) in common locations.
+        /// <para/>
+        /// Returns `<see langword="true"/>` if successful; otherwise `<see langword="false"/>`.
         /// </summary>
-        /// <param name="hints">(optional) List of paths the caller believes Git can be found.</param>
-        /// <param name="paths">
-        /// All discoverd paths to the root of Git installations, ordered by 'priority' with first
-        /// being the best installation to use when shelling out to Git.exe.
-        /// </param>
-        /// <returns><see langword="True"/> if Git was detected; <see langword="false"/> otherwise.</returns>
+        /// <param name="installations">The list of found Git installation if successful; otherwise `<see langword="null"/>`.</param>
         public static bool FindGitInstallations(out List<GitInstallation> installations)
         {
             const string GitAppName = @"Git";
             const string GitSubkeyName = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1";
             const string GitValueName = "InstallLocation";
 
-            Trace.WriteLine("Where::Git");
-
             installations = null;
 
-            var programFiles32Path = String.Empty;
-            var programFiles64Path = String.Empty;
-            var appDataRoamingPath = String.Empty;
-            var appDataLocalPath = String.Empty;
-            var programDataPath = String.Empty;
-            var reg32HklmPath = String.Empty;
-            var reg64HklmPath = String.Empty;
-            var reg32HkcuPath = String.Empty;
-            var reg64HkcuPath = String.Empty;
-            var shellPathValue = String.Empty;
+            var programFiles32Path = string.Empty;
+            var programFiles64Path = string.Empty;
+            var appDataRoamingPath = string.Empty;
+            var appDataLocalPath = string.Empty;
+            var programDataPath = string.Empty;
+            var reg32HklmPath = string.Empty;
+            var reg64HklmPath = string.Empty;
+            var reg32HkcuPath = string.Empty;
+            var reg64HkcuPath = string.Empty;
+            var shellPathValue = string.Empty;
 
-            RegistryKey reg32HklmKey = null;
-            RegistryKey reg64HklmKey = null;
-            RegistryKey reg32HkcuKey = null;
-            RegistryKey reg64HkcuKey = null;
-
-            if ((reg32HklmKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry32)) != null)
+            using (var reg32HklmKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry32))
+            using (var reg32HkcuKey = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry32))
+            using (var reg32HklmSubKey = reg32HklmKey?.OpenSubKey(GitSubkeyName))
+            using (var reg32HkcuSubKey = reg32HkcuKey?.OpenSubKey(GitSubkeyName))
             {
-                if ((reg32HklmKey = reg32HklmKey.OpenSubKey(GitSubkeyName)) != null)
-                {
-                    reg32HklmPath = reg32HklmKey.GetValue(GitValueName, reg32HklmPath) as String;
-                }
-            }
-
-            if ((reg32HkcuKey = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry32)) != null)
-            {
-                if ((reg32HkcuKey = reg32HkcuKey.OpenSubKey(GitSubkeyName)) != null)
-                {
-                    reg32HkcuPath = reg32HkcuKey.GetValue(GitValueName, reg32HkcuPath) as String;
-                }
+                reg32HklmPath = reg32HklmSubKey?.GetValue(GitValueName, reg32HklmPath) as string;
+                reg32HkcuPath = reg32HkcuSubKey?.GetValue(GitValueName, reg32HkcuPath) as string;
             }
 
             if ((programFiles32Path = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)) != null)
@@ -117,28 +131,17 @@ namespace Microsoft.Alm.Git
 
             if (Environment.Is64BitOperatingSystem)
             {
-                if ((reg64HklmKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64)) != null)
+                using (var reg64HklmKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
+                using (var reg64HkcuKey = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64))
+                using (var reg64HklmSubKey = reg64HklmKey?.OpenSubKey(GitSubkeyName))
+                using (var reg64HkcuSubKey = reg64HkcuKey?.OpenSubKey(GitSubkeyName))
                 {
-                    if ((reg64HklmKey = reg64HklmKey.OpenSubKey(GitSubkeyName)) != null)
-                    {
-                        reg64HklmPath = reg64HklmKey.GetValue(GitValueName, reg64HklmPath) as String;
-                    }
+                    reg64HklmPath = reg64HklmSubKey?.GetValue(GitValueName, reg64HklmPath) as string;
+                    reg64HkcuPath = reg64HkcuSubKey?.GetValue(GitValueName, reg64HkcuPath) as string;
                 }
 
-                if ((reg64HkcuKey = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64)) != null)
+                if ((programFiles64Path = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)) != null)
                 {
-                    if ((reg64HkcuKey = reg64HkcuKey.OpenSubKey(GitSubkeyName)) != null)
-                    {
-                        reg64HkcuPath = reg64HkcuKey.GetValue(GitValueName, reg64HkcuPath) as String;
-                    }
-                }
-
-                // since .NET returns %ProgramFiles% as %ProgramFilesX86% when the app is 32-bit
-                // manual manipulation of the path is required
-
-                if ((programFiles64Path = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)) != null)
-                {
-                    programFiles64Path = programFiles64Path.Substring(0, programFiles64Path.Length - 6);
                     programFiles64Path = Path.Combine(programFiles64Path, GitAppName);
                 }
             }
@@ -159,11 +162,11 @@ namespace Microsoft.Alm.Git
             }
 
             List<GitInstallation> candidates = new List<GitInstallation>();
-            // add candidate locations in order of preference
+            // Add candidate locations in order of preference.
             if (Where.FindApp(GitAppName, out shellPathValue))
             {
                 // `Where.App` returns the path to the executable, truncate to the installation root
-                if (shellPathValue.EndsWith(GitInstallation.AllVersionCmdPath, StringComparison.InvariantCultureIgnoreCase))
+                if (shellPathValue.EndsWith(GitInstallation.AllVersionCmdPath, StringComparison.OrdinalIgnoreCase))
                 {
                     shellPathValue = shellPathValue.Substring(0, shellPathValue.Length - GitInstallation.AllVersionCmdPath.Length);
                 }
@@ -173,46 +176,46 @@ namespace Microsoft.Alm.Git
                 candidates.Add(new GitInstallation(shellPathValue, KnownGitDistribution.GitForWindows32v1));
             }
 
-            if (!String.IsNullOrEmpty(reg64HklmPath))
+            if (!string.IsNullOrEmpty(reg64HklmPath))
             {
                 candidates.Add(new GitInstallation(reg64HklmPath, KnownGitDistribution.GitForWindows64v2));
             }
-            if (!String.IsNullOrEmpty(programFiles32Path))
+            if (!string.IsNullOrEmpty(programFiles32Path))
             {
                 candidates.Add(new GitInstallation(programFiles64Path, KnownGitDistribution.GitForWindows64v2));
             }
-            if (!String.IsNullOrEmpty(reg64HkcuPath))
+            if (!string.IsNullOrEmpty(reg64HkcuPath))
             {
                 candidates.Add(new GitInstallation(reg64HkcuPath, KnownGitDistribution.GitForWindows64v2));
             }
-            if (!String.IsNullOrEmpty(reg32HklmPath))
+            if (!string.IsNullOrEmpty(reg32HklmPath))
             {
                 candidates.Add(new GitInstallation(reg32HklmPath, KnownGitDistribution.GitForWindows32v2));
                 candidates.Add(new GitInstallation(reg32HklmPath, KnownGitDistribution.GitForWindows32v1));
             }
-            if (!String.IsNullOrEmpty(programFiles32Path))
+            if (!string.IsNullOrEmpty(programFiles32Path))
             {
                 candidates.Add(new GitInstallation(programFiles32Path, KnownGitDistribution.GitForWindows32v2));
                 candidates.Add(new GitInstallation(programFiles32Path, KnownGitDistribution.GitForWindows32v1));
             }
-            if (!String.IsNullOrEmpty(reg32HkcuPath))
+            if (!string.IsNullOrEmpty(reg32HkcuPath))
             {
                 candidates.Add(new GitInstallation(reg32HkcuPath, KnownGitDistribution.GitForWindows32v2));
                 candidates.Add(new GitInstallation(reg32HkcuPath, KnownGitDistribution.GitForWindows32v1));
             }
-            if (!String.IsNullOrEmpty(programDataPath))
+            if (!string.IsNullOrEmpty(programDataPath))
             {
                 candidates.Add(new GitInstallation(programDataPath, KnownGitDistribution.GitForWindows64v2));
                 candidates.Add(new GitInstallation(programDataPath, KnownGitDistribution.GitForWindows32v2));
                 candidates.Add(new GitInstallation(programDataPath, KnownGitDistribution.GitForWindows32v1));
             }
-            if (!String.IsNullOrEmpty(appDataLocalPath))
+            if (!string.IsNullOrEmpty(appDataLocalPath))
             {
                 candidates.Add(new GitInstallation(appDataLocalPath, KnownGitDistribution.GitForWindows64v2));
                 candidates.Add(new GitInstallation(appDataLocalPath, KnownGitDistribution.GitForWindows32v2));
                 candidates.Add(new GitInstallation(appDataLocalPath, KnownGitDistribution.GitForWindows32v1));
             }
-            if (!String.IsNullOrEmpty(appDataRoamingPath))
+            if (!string.IsNullOrEmpty(appDataRoamingPath))
             {
                 candidates.Add(new GitInstallation(appDataRoamingPath, KnownGitDistribution.GitForWindows64v2));
                 candidates.Add(new GitInstallation(appDataRoamingPath, KnownGitDistribution.GitForWindows32v2));
@@ -230,68 +233,109 @@ namespace Microsoft.Alm.Git
 
             installations = pathSet.ToList();
 
-            Trace.WriteLine("   " + installations.Count + " Git installation(s) found.");
+            Git.Trace.WriteLine($"found {installations.Count} Git installation(s).");
 
             return installations.Count > 0;
         }
 
         /// <summary>
-        /// Gets the path to the Git global configuration file.
+        /// Returns the path to the user's home directory (~/ or %HOME%) that Git will rely on.
         /// </summary>
-        /// <param name="path">Path to the Git global configuration</param>
-        /// <returns><see langword="True"/> if succeeds; <see langword="false"/> otherwise.</returns>
+        public static string Home()
+        {
+            // Git relies on the %HOME% environment variable to represent the users home directory it
+            // can contain embedded environment variables, so we need to expand it
+            string path = Environment.GetEnvironmentVariable("HOME", EnvironmentVariableTarget.Process);
+
+            if (path != null)
+            {
+                path = Environment.ExpandEnvironmentVariables(path);
+
+                // If the path is good, return it.
+                if (Directory.Exists(path))
+                    return path;
+            }
+
+            // Absent the %HOME% variable, Git will construct it via %HOMEDRIVE%%HOMEPATH%, so we'll
+            // attempt to that here and if it is valid, return it as %HOME%.
+            string homeDrive = Environment.GetEnvironmentVariable("HOMEDRIVE", EnvironmentVariableTarget.Process);
+            string homePath = Environment.GetEnvironmentVariable("HOMEPATH", EnvironmentVariableTarget.Process);
+
+            if (homeDrive != null && homePath != null)
+            {
+                path = homeDrive + homePath;
+
+                if (Directory.Exists(path))
+                    return path;
+            }
+
+            // When all else fails, Git falls back to %USERPROFILE% as the user's home directory, so should we.
+            return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        }
+
+        /// <summary>
+        /// Gets the path to Git's global configuration file.
+        /// <para/>
+        /// Returns `<see langword="true"/>` if successful; otherwise `<see langword="false"/>`.
+        /// </summary>
+        /// <param name="path">Path to Git's global configuration if successful; otherwise `<see langword="null"/>`.</param>
         public static bool GitGlobalConfig(out string path)
         {
             const string GlobalConfigFileName = ".gitconfig";
 
-            Trace.WriteLine("Where::GitGlobalConfig");
+            // Get the user's home directory, then append the global config file name.
+            string home = Home();
 
-            path = null;
+            var globalPath = Path.Combine(home, GlobalConfigFileName);
 
-            var globalPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), GlobalConfigFileName);
-
+            // If the path is valid, return it to the user.
             if (File.Exists(globalPath))
             {
                 path = globalPath;
+                return true;
             }
 
-            return path != null;
+            path = null;
+            return false;
         }
 
         /// <summary>
-        /// Gets the path to the Git local configuration file based on the <paramref name="startingDirectory"/>.
+        /// Gets the path to Git's portable system configuration file.
+        /// <para/>
+        /// Searches starting with `<paramref name="startingDirectory"/>` working up towards the device root.
+        /// <para/>
+        /// Returns `<see langword="true"/>` if successful; otherwise `<see langword="false"/>`.
         /// </summary>
-        /// <param name="startingDirectory">A directory of the repository where the configuration file is contained.</param>
-        /// <param name="path">Path to the Git local configuration</param>
-        /// <returns><see langword="True"/> if succeeds; <see langword="false"/> otherwise.</returns>
+        /// <param name="startingDirectory">Working directory of the repository to find the configuration.</param>
+        /// <param name="path">Path to Git's local configuration if successful; otherwise `<see langword="null"/>`.</param>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Performance", "CA1800:DoNotCastUnnecessarily")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2202:Do not dispose objects multiple times")]
         public static bool GitLocalConfig(string startingDirectory, out string path)
         {
-            const string GitOdbFolderName = ".git";
+            const string GitFolderName = ".git";
             const string LocalConfigFileName = "config";
 
-            Trace.WriteLine("Where::GitLocalConfig");
-
-            path = null;
-
-            if (!String.IsNullOrWhiteSpace(startingDirectory))
+            if (!string.IsNullOrWhiteSpace(startingDirectory))
             {
                 var dir = new DirectoryInfo(startingDirectory);
-                if (dir.Exists)
 
+                if (dir.Exists)
                 {
                     Func<DirectoryInfo, FileSystemInfo> hasOdb = (DirectoryInfo info) =>
                     {
                         if (info == null || !info.Exists)
                             return null;
 
-                        return info.EnumerateFileSystemInfos()
-                                   .Where((FileSystemInfo sub) =>
-                                   {
-                                       return sub != null
-                                           && sub.Exists
-                                           && String.Equals(sub.Name, GitOdbFolderName, StringComparison.OrdinalIgnoreCase);
-                                   })
-                                   .FirstOrDefault();
+                        foreach (var item in info.EnumerateFileSystemInfos())
+                        {
+                            if (item != null
+                                && item.Exists
+                                && (GitFolderName.Equals(item.Name, StringComparison.OrdinalIgnoreCase)
+                                    || LocalConfigFileName.Equals(item.Name, StringComparison.OrdinalIgnoreCase)))
+                                return item;
+                        }
+
+                        return null;
                     };
 
                     FileSystemInfo result = null;
@@ -311,7 +355,13 @@ namespace Microsoft.Alm.Git
                             if (File.Exists(localPath))
                             {
                                 path = localPath;
+                                return true;
                             }
+                        }
+                        else if (result.Name == LocalConfigFileName && result is FileInfo)
+                        {
+                            path = result.FullName;
+                            return true;
                         }
                         else
                         {
@@ -349,6 +399,7 @@ namespace Microsoft.Alm.Git
                                     if (File.Exists(localPath))
                                     {
                                         path = localPath;
+                                        return true;
                                     }
                                 }
                             }
@@ -357,12 +408,14 @@ namespace Microsoft.Alm.Git
                 }
             }
 
-            return path != null;
+            path = null;
+            return false;
         }
+
         /// <summary>
-        /// Gets the path to the Git local configuration file based on the current working directory.
+        /// Gets the path to Git's local configuration file based on the current working directory.
         /// </summary>
-        /// <param name="path">Path to the Git local configuration.</param>
+        /// <param name="path">Path to Git's local configuration if successful; otherwise `<see langword="null"/>`.</param>
         /// <returns><see langword="True"/> if succeeds; <see langword="false"/> otherwise.</returns>
         public static bool GitLocalConfig(out string path)
         {
@@ -370,10 +423,13 @@ namespace Microsoft.Alm.Git
         }
 
         /// <summary>
-        /// Gets the path to the Git portable system configuration file.
+        /// Gets the path to Git's portable system configuration file.
+        /// <para/>
+        /// Searches starting with `<see cref="Environment.CurrentDirectory"/>` working up towards the device root.
+        /// <para/>
+        /// Returns `<see langword="true"/>` if successful; otherwise `<see langword="false"/>`.
         /// </summary>
-        /// <param name="path">Path to the Git portable system configuration</param>
-        /// <returns><see langword="True"/> if succeeds; <se
+        /// <param name="path">Path to Git's portable system configuration if successful; otherwise `<see langword="null"/>`.</param>
         public static bool GitPortableConfig(out string path)
         {
             const string PortableConfigFolder = "Git";
@@ -392,32 +448,72 @@ namespace Microsoft.Alm.Git
         }
 
         /// <summary>
-        /// Gets the path to the Git system configuration file.
+        /// Gets the path to Git's system configuration file.
+        /// <para/>
+        /// Returns `<see langword="true"/>` if successful; otherwise `<see langword="false"/>`.
         /// </summary>
-        /// <param name="path">Path to the Git system configuration.</param>
-        /// <returns><see langword="True"/> if succeeds; <see langword="false"/> otherwise.</returns>
-        public static bool GitSystemConfig(out string path)
+        /// <param name="path">Path to Git's system configuration if successful; otherwise `<see langword="null"/>`.</param>
+        public static bool GitSystemConfig(GitInstallation? installation, out string path)
         {
-            const string SystemConfigFileName = "gitconfig";
-
-            Trace.WriteLine("Where::GitSystemConfig");
-
-            // find Git on the local disk - the system config is stored relative to it
-            if (FindApp("git", out path))
+            if (installation.HasValue && File.Exists(installation.Value.Config))
             {
-                FileInfo gitInfo = new FileInfo(path);
-                DirectoryInfo dir = gitInfo.Directory;
-                if (dir.Parent != null)
-                {
-                    dir = dir.Parent;
-                }
+                path = installation.Value.Path;
+                return true;
+            }
+            // find Git on the local disk - the system config is stored relative to it
+            else
+            {
+                List<GitInstallation> installations;
 
-                var file = dir.EnumerateFiles(SystemConfigFileName, SearchOption.AllDirectories).FirstOrDefault();
-                if (file != null && file.Exists)
+                if (FindGitInstallations(out installations)
+                    && File.Exists(installations[0].Config))
                 {
-                    path = file.FullName;
+                    path = installations[0].Config;
                     return true;
                 }
+            }
+
+            path = null;
+            return false;
+        }
+
+        /// <summary>
+        /// Gets the path to Git's XDG configuration file.
+        /// <para/>
+        /// Returns `<see langword="true"/>` if successful; otherwise `<see langword="false"/>`.
+        /// </summary>
+        /// <param name="path">Path to Git's XDG configuration file if successful; otherwise `<see langword="null"/>`.</param>
+        public static bool GitXdgConfig(out string path)
+        {
+            const string XdgConfigFolder = "Git";
+            const string XdgConfigFileName = "config";
+
+            string xdgConfigHome;
+            string xdgConfigPath;
+
+            // The XDG config home is defined by an environment variable.
+            xdgConfigHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+
+            if (Directory.Exists(xdgConfigHome))
+            {
+                xdgConfigPath = Path.Combine(xdgConfigHome, XdgConfigFolder, XdgConfigFileName);
+
+                if (File.Exists(xdgConfigPath))
+                {
+                    path = xdgConfigPath;
+                    return true;
+                }
+            }
+
+            // Fall back to using the %AppData% folder, and try again.
+            xdgConfigHome = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+
+            xdgConfigPath = Path.Combine(xdgConfigHome, XdgConfigFolder, XdgConfigFileName);
+
+            if (File.Exists(xdgConfigPath))
+            {
+                path = xdgConfigPath;
+                return true;
             }
 
             path = null;

@@ -1,5 +1,5 @@
-﻿using System.Resources;
-using System.Reflection;
+﻿using System.Reflection;
+using System.Resources;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -8,13 +8,14 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Microsoft Corporation")]
 [assembly: AssemblyProduct("https://github.com/Microsoft/Git-Credential-Manager-for-Windows")]
-[assembly: AssemblyCopyright("Copyright © Microsoft 2016")]
+[assembly: AssemblyCopyright("Copyright © Microsoft Corporation 2017. All rights reserved.")]
 [assembly: AssemblyTrademark("Microsoft Corporation")]
 [assembly: AssemblyCulture("")]
 [assembly: ComVisible(false)]
 [assembly: Guid("4827c16d-5c58-406d-ab3f-3700bb0d06fe")]
-[assembly: AssemblyVersion("1.0.1.0")]
-[assembly: AssemblyFileVersion("1.0.1.0")]
+[assembly: AssemblyVersion("1.3.0.0")]
+[assembly: AssemblyFileVersion("1.3.0.0")]
 [assembly: InternalsVisibleTo("Microsoft.Alm.Git.Test")]
+[assembly: InternalsVisibleTo("Microsoft.Alm.CredentialHelper.Test")]
+[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
 [assembly: NeutralResourcesLanguage("en-US")]
-
